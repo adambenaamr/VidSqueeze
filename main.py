@@ -129,7 +129,7 @@ def main():
           try:
             file.unlink()
           except Exception as e:
-            tqdm.write(f"Failed to delete {file.name}: {e}")
+            tqdm.write(f'Failed to delete {file.name}: {e}')
         else:
           progress_bar.set_postfix_str(f'Error: {file.name}')
         
