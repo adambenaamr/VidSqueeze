@@ -36,8 +36,22 @@ video_extensions = {'.mp4', '.mov', '.avi', '.mkv', '.webm'}
 # Create the output directory if it doesn't already exist
 output_directory.mkdir(parents=True, exist_ok=True)
 
+def non_compatible_mkv_compression(input_file, output_file):
+  # Construct the FFmpeg command
+  command = [
+    'ffmpeg',
+    '-i', input_file,
+    '-c:v', 'ffv1',
+    '-level 3', '-coder 1',
+    '-context 1', '-g 1',
+    '-c:a', 'flac',
+    output_file
+  ]
+
+  return command
+
 # FFmpeg compression used to archiving
-def high_compression(input_file, output_file):
+def high_mp4_compression(input_file, output_file):
   # Construct the FFmpeg command
   command = [
     'ffmpeg',
@@ -51,7 +65,7 @@ def high_compression(input_file, output_file):
   return command
 
 # FFmpeg compression used for arching apple files natively
-def regular_compression(input_file, output_file):
+def regular_mp4_compression(input_file, output_file):
   # Construct the FFmpeg command
   command = [
     'ffmpeg',
@@ -73,45 +87,77 @@ def stream_output(pipe):
 def main():
   video_files = [f for f in input_directory.iterdir() if f.is_file() and f.suffix.lower() in video_extensions]
   apple_compatible = input('Do you want your file(s) to be apple compatible? (y/N): ')
+  archive_file = input('Is this an archive file? (y/N): ')
 
   if not video_files:
     print('No video files found in the input directory')
     sys.exit(0)
   
   if apple_compatible.lower() not in ['y', 'yes']:
-    with tqdm(total=len(video_files), desc='Processing Videos', unit='file') as progress_bar:
-      # Iterate through files
-      for file in video_files:
-        output_file: Path = output_directory / file.with_suffix('.mp4').name
-        cmd = high_compression(file, output_file)
+    if archive_file.lower() not in ['y', 'yes']:
+      with tqdm(total=len(video_files), desc='Processing Videos', unit='file') as progress_bar:
+        # Iterate through files
+        for file in video_files:
+          output_file: Path = output_directory / file.with_suffix('.mp4').name
+          cmd = high_mp4_compression(file, output_file)
 
-        # Start FFmpeg process
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+          # Start FFmpeg process
+          process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-        # Stream FFmpeg stderr (where progress info goes)
-        stderr_thread = threading.Thread(target=stream_output, args=(process.stderr,))
+          # Stream FFmpeg stderr (where progress info goes)
+          stderr_thread = threading.Thread(target=stream_output, args=(process.stderr,))
 
-        stderr_thread.start()
-        process.wait()
-        stderr_thread.join()
+          stderr_thread.start()
+          process.wait()
+          stderr_thread.join()
 
-        if process.returncode == 0:
-          progress_bar.set_postfix_str(f'{file.name}')
+          if process.returncode == 0:
+            progress_bar.set_postfix_str(f'{file.name}')
 
-          try:
-            file.unlink()
-          except Exception as e:
-            tqdm.write(f'Failed to delete {file.name}: {e}')
-        else:
-          progress_bar.set_postfix_str(f'Error: {file.name}')
-        
-        progress_bar.update(1)
+            # Try to delete the original file after the compression has been completed
+            try:
+              file.unlink()
+            except Exception as e:
+              tqdm.write(f'Failed to delete {file.name}: {e}')
+          else:
+            progress_bar.set_postfix_str(f'Error: {file.name}')
+
+          progress_bar.update(1)
+    else:
+      with tqdm(total=len(video_files), desc='Processing Videos', unit='file') as progress_bar:
+        # Iterate through files
+        for file in video_files:
+          output_file: Path = output_directory / file.with_suffix('.mkv').name
+          cmd = non_compatible_mkv_compression(file, output_file)
+
+          # Start FFmpeg process
+          process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+          # Stream FFmpeg stderr (where progress info goes)
+          stderr_thread = threading.Thread(target=stream_output, args=(process.stderr,))
+
+          stderr_thread.start()
+          process.wait()
+          stderr_thread.join()
+
+          if process.returncode == 0:
+            progress_bar.set_postfix_str(f'{file.name}')
+
+            # Try to delete the original file after the compression has been completed
+            try:
+              file.unlink()
+            except Exception as e:
+              tqdm.write(f'Failed to delete {file.name}: {e}')
+          else:
+            progress_bar.set_postfix_str(f'Error: {file.name}')
+
+          progress_bar.update(1)
   else:
     with tqdm(total=len(video_files), desc='Processing Videos', unit='file') as progress_bar:
       # Iterate through files
       for file in video_files:
         output_file: Path = output_directory / file.with_suffix('.mp4').name
-        cmd = regular_compression(file, output_file)
+        cmd = regular_mp4_compression(file, output_file)
 
         # Start FFmpeg process
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -126,6 +172,7 @@ def main():
         if process.returncode == 0:
           progress_bar.set_postfix_str(f'{file.name}')
 
+          # Try to delete the original file after the compression has been completed
           try:
             file.unlink()
           except Exception as e:
