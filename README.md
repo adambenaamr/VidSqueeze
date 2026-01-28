@@ -107,7 +107,7 @@ Best if you need **plug-and-play playback on Apple devices**
 
 - If compression succeeds:
 
-  - Original file id **deleted**
+  - Original file is **deleted**
 
 - If compression fails:
 
