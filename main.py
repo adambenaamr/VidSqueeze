@@ -4,9 +4,77 @@ from tqdm import tqdm
 import threading
 import sys
 
-# Function to prompt the user to enter a valid directory
-# Will exit itself after 3 failed attempts
-def prompt_directory(prompt_text: str, max_attempt: int = 2) -> Path:
+def high_compression(input_file, output_file):
+  """
+  This is the FFmpeg compression used for general archiving as it uses the best known (to my knowledge)
+  compression algorithm and bit set, however this format cannot be natively rendered by MacOS.
+
+  :param input_file: Literally the input file
+  :param output_file: Litterally no difference in input or output file as it will have the same
+  file name in the end just a different file extension
+
+  Returns:
+  --------
+  command
+  - The CLI-based command used for ffmpeg to start it's compression process
+  """
+  command = [
+    'ffmpeg',
+    '-i', input_file,
+    '-c:v', 'libx265',
+    '-c:a', 'copy',
+    '-crf', '28',
+    output_file
+  ]
+
+  return command
+
+def regular_compression(input_file, output_file):
+  """
+  This is the FFmpeg compression used for decent archiving this format can be natively rendered
+  by MacOS but it is generally not the best as file sizes can still remain large and compression
+  can be inefficient at times.
+
+  :param input_file: Literally the input file
+  :param output_file: Litterally no difference in input or output file as it will have the same
+  file name in the end just a different file extension
+
+  :return command: The CLI-based
+  --------
+  command
+  - The CLI-based command used for ffmpeg to start it's compression process
+  """
+  command = [
+    'ffmpeg',
+    '-i', input_file,
+    '-c:v', 'libx264',
+    '-c:a', 'copy',
+    '-crf', '28',
+    output_file
+  ]
+
+  return command
+
+def prompt_input_directory(prompt_text: str, max_attempt: int = 3) -> Path:
+  """
+  Prompt the user to enter a valid existing directory path.
+
+  The user is prompted up to `max_attempt` times to provide a directory path.
+  The input is expanded (e.g., `~`) and resolved to an absolute path.
+  If a valid directory is provided, the corresponding Path object is returned
+  After exceeding the maximum number of failed attempts, the program exits.
+
+  :param prompt_text: The prompt displayed to the user.
+  :type  prompt_text: str
+
+  :param max_attempt: Maximum number of input attempts before existing (default = 3).
+  :type max_attempt: int
+
+  :return Path: A resolved Path object pointing to an existing directory.
+  :rtype Path: Path
+
+  :raise SystemExit: If the user fails to provide a valid directory within the allowed number of attempts.
+  """
   attempts: int = 0
 
   while attempts < max_attempt:
@@ -28,42 +96,55 @@ def prompt_directory(prompt_text: str, max_attempt: int = 2) -> Path:
   print('Too many invalid attempts... Exiting...')
   sys.exit(1)
 
-# Prompt the user for input and output directories
-input_directory: Path = prompt_directory('Enter input directory path (e.g., ./videos): ')
-output_directory: Path = prompt_directory('Enter output directory path (e.g., ./videos_converted): ')
-video_extensions = {'.mp4', '.mov', '.avi', '.mkv', '.webm'}
+def prompt_output_directory(prompt_text: str, max_attempt: int = 3) -> Path:
+  """
+  Prompt the user to enter an output directory path.
 
-# Create the output directory if it doesn't already exist
-output_directory.mkdir(parents=True, exist_ok=True)
+  The user is prompted up to `max_attempt` times to provide a directory path.
+  If the directory already exists, it is returned as a resolved Path.
+  If it does not exist, the directory is created (including parent directories)
+  and then returned. The program exists after too many invalid attempts.
+  
+  :param prompt_text: The prompt displayed to the user.
+  :type prompt_text: str
 
-# FFmpeg compression used to archiving
-def high_compression(input_file, output_file):
-  # Construct the FFmpeg command
-  command = [
-    'ffmpeg',
-    '-i', input_file,
-    '-c:v', 'libx265',
-    '-c:a', 'copy',
-    '-crf', '28',
-    output_file
-  ]
+  :param max_attempt: Maximum number of input attempts before exiting (default = 3)
+  :type max_attempt: int
+  
+  :return Path: A resolved Path object pointing to the existing or newly created directory.
+  :rtype: Path
 
-  return command
+  :raise SystemExit: If the user fails to provide a valid path within the allowed number of attempts.
+  """
+  attempts: int = 2
 
-# FFmpeg compression used for arching apple files natively
-def regular_compression(input_file, output_file):
-  # Construct the FFmpeg command
-  command = [
-    'ffmpeg',
-    '-i', input_file,
-    '-c:v', 'libx264',
-    '-c:a', 'copy',
-    '-crf', '28',
-    output_file
-  ]
+  while attempts < max_attempt:
+    user_input: str = input(prompt_text)
 
-  return command
+    try:
+      user_input: str = user_input.strip()
+      path: Path = Path(user_input).expanduser().resolve()
 
+      if path.exists() and path.is_dir():
+        return path
+    except Exception as e:
+      print(e)
+    
+    else:
+      # Create the output directory if it doesn't already exist
+      path.mkdir(parents=True, exist_ok=True)
+
+      print(f'Created output directory: {path}')
+
+      return path
+
+    attempts += 1
+  
+  print('Too many invalid attempts... Exiting...')
+  sys.exit(1)
+
+# Stream a subprocess pipe line-by-line and write output via `tqdm`
+# so progress bars remain intact, then close the pipe when down
 def stream_output(pipe):
   for line in iter(pipe.readline, b''):
     tqdm.write(line.decode('utf-8').strip())
@@ -71,11 +152,15 @@ def stream_output(pipe):
   pipe.close()
 
 def main():
-  video_files = [f for f in input_directory.iterdir() if f.is_file() and f.suffix.lower() in video_extensions]
-  apple_compatible = input('Do you want your file(s) to be apple compatible? (y/N): ')
+  # Prompt the user for input and output directories
+  input_directory: Path = prompt_input_directory('Enter input directory path (e.g., ./videos): ')
+  output_directory: Path = prompt_output_directory('Enter output directory path (e.g., ./videos_converted): ')
+  apple_compatible: str = input('Do you want your file(s) to be apple compatible? (y/N): ')
+  video_extensions: set[str] = {'.mp4', '.mov', '.avi', '.mkv', '.webm'}
+  video_files: list[Path] = [f for f in input_directory.iterdir() if f.is_file() and f.suffix.lower() in video_extensions]
 
   if not video_files:
-    print('No video files found in the input directory')
+    print('No video files found...')
     sys.exit(0)
   
   if apple_compatible.lower() not in ['y', 'yes']:
