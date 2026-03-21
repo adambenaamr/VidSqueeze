@@ -1,0 +1,15 @@
+{
+  "name": "vidsqueeze",
+  "version": "1.0.0",
+  "description": "A native video encoder that uses FFMPEG to compress videos",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Adam Ben-Aamr",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^39.0.0"
+  }
+}
